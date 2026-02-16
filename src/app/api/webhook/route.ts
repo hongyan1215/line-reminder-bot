@@ -15,7 +15,10 @@ const client = new Client({
 
 // QStash client (optional, only used if QSTASH_TOKEN is set)
 const qstashClient = process.env.QSTASH_TOKEN
-  ? new QStashClient({ token: process.env.QSTASH_TOKEN })
+  ? new QStashClient({
+      token: process.env.QSTASH_TOKEN,
+      baseUrl: process.env.QSTASH_URL, // 可選，預設會自動選擇最近的 region
+    })
   : null;
 
 function formatDateTimeForUser(date: Date) {

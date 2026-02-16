@@ -227,7 +227,7 @@ One common reason is that you're trying to access the database from an IP that i
 
 ## 六點五、設定 Upstash QStash（推薦：精準提醒方案）
 
-如果你選擇使用 **QStash 方案**（推薦），需要設定 QStash Token：
+如果你選擇使用 **QStash 方案**（推薦），需要設定 QStash 相關環境變數：
 
 1. **註冊 Upstash 帳號**：
    - 前往 `https://console.upstash.com/`
@@ -236,21 +236,36 @@ One common reason is that you're trying to access the database from an IP that i
 2. **建立 QStash**：
    - 登入後，點左側選單的 **QStash**
    - 點 **Create** 建立新的 QStash 專案
-   - 複製 **QStash Token**（格式類似 `qst_xxx...`）
+   - 複製以下資訊：
+     - **QStash URL**（例如：`https://qstash-eu-central-1.upstash.io`）
+     - **QStash Token**（格式類似 `eyJVc2VySUQiOiI...`）
+     - **Current Signing Key**（格式類似 `sig_xxx...`）
+     - **Next Signing Key**（格式類似 `sig_xxx...`，選填）
 
 3. **設定環境變數**：
    - 在本機 `.env.local` 中新增：
      ```bash
+     QSTASH_URL=https://qstash-eu-central-1.upstash.io
      QSTASH_TOKEN=你的_QStash_Token
+     QSTASH_CURRENT_SIGNING_KEY=你的_Current_Signing_Key
+     QSTASH_NEXT_SIGNING_KEY=你的_Next_Signing_Key（選填）
      ```
-   - 在 Vercel 專案的 **Environment Variables** 也新增相同的 `QSTASH_TOKEN`
+   - 在 Vercel 專案的 **Environment Variables** 也新增相同的四個變數：
+     - `QSTASH_URL`
+     - `QSTASH_TOKEN`
+     - `QSTASH_CURRENT_SIGNING_KEY`
+     - `QSTASH_NEXT_SIGNING_KEY`（選填）
 
 4. **完成**：
    - 重新部署 Vercel 專案
    - 現在當使用者設定提醒時，系統會自動透過 QStash 預約未來的發送時間
    - **不需要設定任何外部 cron 服務**，QStash 會自動在指定時間觸發
+   - QStash 會使用簽名驗證確保請求的安全性
 
-> **注意**：如果沒有設定 `QSTASH_TOKEN`，系統會回退到傳統的資料庫儲存方式，但提醒不會自動發送（需要外部 cron 服務）。
+> **注意**：
+> - 如果沒有設定 `QSTASH_TOKEN`，系統會回退到傳統的資料庫儲存方式，但提醒不會自動發送（需要外部 cron 服務）。
+> - `QSTASH_CURRENT_SIGNING_KEY` 用於驗證 QStash 回調請求的簽名，建議在生產環境一定要設定。
+> - `QSTASH_NEXT_SIGNING_KEY` 是選填的，用於簽名 key 輪換時使用。
 
 ---
 

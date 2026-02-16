@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@line/bot-sdk';
+import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import dbConnect from '@/lib/db';
 import Reminder from '@/models/Reminder';
 
@@ -24,22 +25,17 @@ function formatDateTimeForUser(date: Date) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-
     // 驗證 QStash 簽名（如果設定了 QSTASH_CURRENT_SIGNING_KEY）
-    // 注意：在生產環境建議啟用簽名驗證以提高安全性
     if (process.env.QSTASH_CURRENT_SIGNING_KEY) {
       try {
-        // QStash 簽名會在 headers 中，我們可以選擇性驗證
-        // 為了簡化，這裡先跳過嚴格驗證，但建議之後加上
-        const signature = req.headers.get('upstash-signature');
-        if (!signature && process.env.NODE_ENV === 'production') {
-          console.warn('QStash signature missing in production');
-        }
+        await verifySignatureAppRouter(req, process.env.QSTASH_CURRENT_SIGNING_KEY);
       } catch (sigError) {
         console.error('QStash signature verification failed:', sigError);
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }
     }
+
+    const body = await req.json();
     const { reminderId, userId, message } = body;
 
     if (!reminderId || !userId || !message) {
