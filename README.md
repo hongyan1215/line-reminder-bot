@@ -49,6 +49,7 @@
    GOOGLE_API_KEY=你的_Gemini_API_Key
    LINE_CHANNEL_ACCESS_TOKEN=你的_LINE_Channel_Access_Token
    LINE_CHANNEL_SECRET=你的_LINE_Channel_Secret
+   QSTASH_TOKEN=你的_QStash_Token（選填，如果使用 QStash 方案）
    ```
 
 3. 啟動開發伺服器：
@@ -224,11 +225,82 @@ One common reason is that you're trying to access the database from an IP that i
 
 ---
 
-## 七、設定提醒 Cron（讓提醒在正確時間推播）⚠️ 重要！
+## 六點五、設定 Upstash QStash（推薦：精準提醒方案）
 
-**提醒功能已經實作好了**（`src/app/api/cron/reminder/route.ts`），但需要你設定 **Cron Job** 來定期觸發，提醒才會在指定時間自動發送給使用者。
+如果你選擇使用 **QStash 方案**（推薦），需要設定 QStash Token：
 
-### 功能說明
+1. **註冊 Upstash 帳號**：
+   - 前往 `https://console.upstash.com/`
+   - 使用 GitHub 或 Email 註冊（免費）
+
+2. **建立 QStash**：
+   - 登入後，點左側選單的 **QStash**
+   - 點 **Create** 建立新的 QStash 專案
+   - 複製 **QStash Token**（格式類似 `qst_xxx...`）
+
+3. **設定環境變數**：
+   - 在本機 `.env.local` 中新增：
+     ```bash
+     QSTASH_TOKEN=你的_QStash_Token
+     ```
+   - 在 Vercel 專案的 **Environment Variables** 也新增相同的 `QSTASH_TOKEN`
+
+4. **完成**：
+   - 重新部署 Vercel 專案
+   - 現在當使用者設定提醒時，系統會自動透過 QStash 預約未來的發送時間
+   - **不需要設定任何外部 cron 服務**，QStash 會自動在指定時間觸發
+
+> **注意**：如果沒有設定 `QSTASH_TOKEN`，系統會回退到傳統的資料庫儲存方式，但提醒不會自動發送（需要外部 cron 服務）。
+
+---
+
+## 七、設定提醒推播機制 ⚠️ 重要！
+
+**提醒功能已經實作好了**，現在有兩種方式可以讓提醒在指定時間自動發送：
+
+### 🔥 方案 A：使用 Upstash QStash（最推薦，精準且優雅）
+
+這是在 Serverless（無伺服器）架構中最聰明的做法。它不需要每分鐘去資料庫檢查，而是採用「預約叫醒」的機制。
+
+#### 運作原理
+
+1. 使用者傳訊息，Vercel Webhook 收到後交給 Gemini 解析出時間（例如 2026-02-18T15:00:00）。
+2. 你的 Vercel 程式呼叫 Upstash QStash 的 API，告訴它：「請在 2026-02-18 15:00:00 的時候，發送一個 HTTP POST 請求回到我的 Vercel API，並把提醒資訊傳回來」。
+3. 時間一到，QStash 會精準地呼叫你的 Vercel API（`/api/reminder/send`），Vercel 再透過 LINE 推播發給使用者。
+
+**優點**：
+- 完全免除資料庫輪詢的麻煩
+- 時間精準到秒
+- 不需要外部 cron 服務
+- 免費版每天有 500 次呼叫額度，給個人使用絕對夠
+
+#### 設定步驟
+
+1. **註冊 Upstash 帳號**：
+   - 前往 `https://console.upstash.com/`
+   - 使用 GitHub 或 Email 註冊（免費）
+
+2. **建立 QStash**：
+   - 登入後，點左側選單的 **QStash**
+   - 點 **Create** 建立新的 QStash 專案
+   - 複製 **QStash Token**（格式類似 `qst_xxx...`）
+
+3. **設定環境變數**：
+   - 在本機 `.env.local` 中新增：
+     ```bash
+     QSTASH_TOKEN=你的_QStash_Token
+     ```
+   - 在 Vercel 專案的 **Environment Variables** 也新增相同的 `QSTASH_TOKEN`
+
+4. **完成**：
+   - 重新部署 Vercel 專案
+   - 現在當使用者設定提醒時，系統會自動透過 QStash 預約未來的發送時間
+
+### 方案 B：使用外部 Cron 服務（傳統輪詢方式）
+
+如果你不想使用 QStash，也可以使用傳統的 cron 方式：
+
+#### 功能說明
 
 當你呼叫這個 API 時：
 
@@ -240,13 +312,13 @@ One common reason is that you're trying to access the database from an IP that i
 2. 使用 `LINE_CHANNEL_ACCESS_TOKEN` 透過 `pushMessage` 對對應 `userId` 發出訊息。
 3. 把這些提醒的 `status` 設為 `sent`，儲存 `sentAt`。
 
-### ⚠️ Vercel 免費版限制
+#### ⚠️ Vercel 免費版限制
 
 **Vercel 免費版（Hobby）的 Cron Jobs 只能每天執行一次**，無法滿足每分鐘檢查提醒的需求。
 
-**解決方案：使用外部免費 Cron 服務**（推薦）
+**解決方案：使用外部免費 Cron 服務**
 
-### 推薦方案：使用 cron-job.org（免費，支援每分鐘執行）
+#### 推薦方案：使用 cron-job.org（免費，支援每分鐘執行）
 
 1. **註冊帳號**：
    - 前往 `https://cron-job.org/`

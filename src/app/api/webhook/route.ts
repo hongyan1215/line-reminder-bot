@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, WebhookEvent, validateSignature } from '@line/bot-sdk';
+import { Client as QStashClient } from '@upstash/qstash';
 import dbConnect from '@/lib/db';
 import { parseMessage, AIParseResult } from '@/lib/ai';
 import Reminder from '@/models/Reminder';
@@ -11,6 +12,11 @@ const client = new Client({
   channelAccessToken,
   channelSecret,
 });
+
+// QStash client (optional, only used if QSTASH_TOKEN is set)
+const qstashClient = process.env.QSTASH_TOKEN
+  ? new QStashClient({ token: process.env.QSTASH_TOKEN })
+  : null;
 
 function formatDateTimeForUser(date: Date) {
   return date.toLocaleString('zh-TW', {
@@ -81,6 +87,34 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
         scheduledAt: scheduled,
         status: 'pending',
       });
+
+      // 使用 QStash 預約未來的提醒發送
+      if (qstashClient) {
+        try {
+          // 取得回調 URL（優先使用 VERCEL_URL，否則使用 NEXT_PUBLIC_APP_URL 或建構）
+          const baseUrl =
+            process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}`
+              : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const callbackUrl = `${baseUrl}/api/reminder/send`;
+
+          const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
+          const delaySeconds = Math.floor(delayMs / 1000); // QStash delay 使用秒數
+
+          await qstashClient.publishJSON({
+            url: callbackUrl,
+            body: {
+              reminderId: reminder._id.toString(),
+              userId,
+              message: reminder.message,
+            },
+            delay: delaySeconds, // 延遲時間（秒）
+          });
+        } catch (error) {
+          console.error('Failed to schedule QStash reminder:', error);
+          // 如果 QStash 失敗，仍然回覆使用者，但提醒可能不會準時發送
+        }
+      }
 
       await client.replyMessage(replyToken, {
         type: 'text',
