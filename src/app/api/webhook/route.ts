@@ -24,7 +24,16 @@ function formatDateTimeForUser(date: Date) {
 }
 
 async function handleTextMessage(userId: string, replyToken: string, text: string) {
-  await dbConnect();
+  try {
+    await dbConnect();
+  } catch (error) {
+    console.error('dbConnect failed:', error);
+    await client.replyMessage(replyToken, {
+      type: 'text',
+      text: '伺服器暫時無法連線到資料庫，請稍後再試一次。',
+    });
+    return;
+  }
 
   let aiResult: AIParseResult;
   try {
