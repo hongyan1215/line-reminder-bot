@@ -83,10 +83,23 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
       }
 
       const now = new Date();
-      if (scheduled.getTime() <= now.getTime()) {
+      // 允許至少 30 秒的緩衝時間，避免因為時間解析的微小誤差或時區轉換問題導致失敗
+      const minDelayMs = 30 * 1000; // 30 秒
+      const timeDiff = scheduled.getTime() - now.getTime();
+      
+      console.log('[CREATE_REMINDER] Time validation:', {
+        now: now.toISOString(),
+        scheduled: scheduled.toISOString(),
+        scheduledLocal: formatDateTimeForUser(scheduled),
+        timeDiffMs: timeDiff,
+        timeDiffSeconds: Math.floor(timeDiff / 1000),
+        aiDatetime: aiResult.reminder.datetime,
+      });
+
+      if (timeDiff < minDelayMs) {
         await client.replyMessage(replyToken, {
           type: 'text',
-          text: '這個時間已經過去了，請給我一個未來的時間來設定提醒喔～',
+          text: `這個時間太接近了（距離現在只有 ${Math.floor(timeDiff / 1000)} 秒），請給我至少 1 分鐘後的時間來設定提醒喔～`,
         });
         return;
       }
@@ -261,10 +274,23 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
       }
 
       const now = new Date();
-      if (newScheduled.getTime() <= now.getTime()) {
+      // 允許至少 30 秒的緩衝時間
+      const minDelayMs = 30 * 1000; // 30 秒
+      const timeDiff = newScheduled.getTime() - now.getTime();
+      
+      console.log('[UPDATE_REMINDER] Time validation:', {
+        now: now.toISOString(),
+        newScheduled: newScheduled.toISOString(),
+        newScheduledLocal: formatDateTimeForUser(newScheduled),
+        timeDiffMs: timeDiff,
+        timeDiffSeconds: Math.floor(timeDiff / 1000),
+        aiNewDatetime: aiResult.updateReminder.newDatetime,
+      });
+
+      if (timeDiff < minDelayMs) {
         await client.replyMessage(replyToken, {
           type: 'text',
-          text: '新的時間已經過去了，請給我一個未來的時間。',
+          text: `新的時間太接近了（距離現在只有 ${Math.floor(timeDiff / 1000)} 秒），請給我至少 1 分鐘後的時間。`,
         });
         return;
       }
