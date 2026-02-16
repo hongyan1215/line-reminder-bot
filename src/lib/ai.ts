@@ -12,6 +12,7 @@ function getGenAI() {
 export type IntentType =
   | 'CREATE_REMINDER'
   | 'LIST_REMINDERS'
+  | 'UPDATE_REMINDER'
   | 'CANCEL_REMINDER'
   | 'GENERAL_CHAT'
   | 'SMALL_TALK'
@@ -45,12 +46,35 @@ export interface ReminderCancelData {
   messageKeyword?: string;
 }
 
+export interface ReminderUpdateData {
+  /**
+   * 使用者可能指定要修改的提醒時間（ISO 字串），例如「把明天早上 9 點的提醒改成下午 3 點」
+   */
+  datetime?: string;
+  /**
+   * 使用者可能用描述來指稱要修改哪一個提醒，例如「開會」、「繳費」等關鍵字
+   */
+  messageKeyword?: string;
+  /**
+   * 新的提醒時間（ISO 字串）
+   */
+  newDatetime: string;
+  /**
+   * 新的提醒內容（選填，如果使用者有提到要修改內容）
+   */
+  newMessage?: string;
+}
+
 export interface AIParseResult {
   intent: IntentType;
   /**
    * CREATE_REMINDER 時使用，描述要建立的提醒資訊
    */
   reminder?: ReminderCreateData;
+  /**
+   * UPDATE_REMINDER 時使用，用來協助後端找出要修改的提醒並提供新資訊
+   */
+  updateReminder?: ReminderUpdateData;
   /**
    * CANCEL_REMINDER 時使用，用來協助後端找出要取消哪一個提醒
    */
@@ -77,10 +101,19 @@ const SYSTEM_PROMPT = `
 
 1. CREATE_REMINDER（建立提醒）
    使用者想設定一個在「特定時間」要做某件事的提醒。
+   - 時間解析規則（非常重要）：
+     * 「上午」= 00:00-11:59（例如：上午 9 點 = 09:00）
+     * 「下午」= 12:00-23:59（例如：下午 3 點 = 15:00）
+     * 「早上」= 06:00-11:59
+     * 「中午」= 11:00-13:00
+     * 「晚上」= 18:00-23:59
+     * 「傍晚」= 17:00-19:00
+     * 如果使用者只說「9 點」沒有說上午或下午，請根據上下文判斷，如果無法判斷則預設為「上午 9 點」
    - 範例：
-     - "幫我明天早上 9 點提醒開會"
-     - "下週一晚上八點提醒我要繳電話費"
-     - "3 月 10 號下午三點提醒我交作業"
+     - "幫我明天上午 9 點提醒開會" → 09:00
+     - "下週一下午三點提醒我要繳電話費" → 15:00
+     - "明天早上 8 點提醒我吃藥" → 08:00
+     - "3 月 10 號下午三點提醒我交作業" → 15:00
    - 輸出規則：
      - intent: "CREATE_REMINDER"
      - reminder.datetime: 轉成 ISO 8601 UTC 字串（先用 Asia/Taipei 解讀，再轉 UTC）
@@ -96,7 +129,24 @@ const SYSTEM_PROMPT = `
    - 輸出規則：
      - intent: "LIST_REMINDERS"
 
-3. CANCEL_REMINDER（取消提醒）
+3. UPDATE_REMINDER（修改提醒）
+   使用者想修改某一個提醒的時間或內容。
+   - 範例：
+     - "把明天早上 9 點的提醒改成下午 3 點"
+     - "把開會那個提醒改成明天下午 2 點"
+     - "修改第一個提醒的時間為後天早上 10 點"
+     - "把第一個提醒改成明天上午 11 點"
+   - 輸出規則：
+     - intent: "UPDATE_REMINDER"
+     - 如果使用者有提到要修改的提醒時間：
+       - updateReminder.datetime: 以 Asia/Taipei 解讀後轉成 ISO 8601 UTC 字串
+     - 如果使用者有提到要修改的提醒關鍵字：
+       - updateReminder.messageKeyword: 一小段中文關鍵字（例如 "開會"、"繳費"）
+     - updateReminder.newDatetime: 新的提醒時間（ISO 8601 UTC 字串，同樣遵循時間解析規則）
+     - updateReminder.newMessage: 如果使用者有提到要修改內容，填新的內容；否則省略
+     - 若找不到要修改的提醒，可以只填 newDatetime 和 messageKeyword，讓後端列出所有提醒供使用者選擇
+
+4. CANCEL_REMINDER（取消提醒）
    使用者想取消某一個原本設定好的提醒。
    - 範例：
      - "取消明天早上 9 點的那個提醒"
@@ -109,7 +159,7 @@ const SYSTEM_PROMPT = `
        - cancelReminder.messageKeyword: 一小段中文關鍵字（例如 "開會"、"繳費"）
      - 若兩者都有就都填；若資訊不足就盡量從語意中推測一個較合理的 keyword。
 
-4. GENERAL_CHAT（自由聊天 / 輕諮詢）
+5. GENERAL_CHAT（自由聊天 / 輕諮詢）
    使用者不是在設定提醒，而是單純聊天、抒發心情、或詢問一般建議。
    - 範例：
      - "最近壓力好大，可以跟我聊聊天嗎？"
@@ -118,7 +168,7 @@ const SYSTEM_PROMPT = `
      - intent: "GENERAL_CHAT"
      - message: 一段要直接顯示給使用者的繁體中文回覆，友善、有同理心。
 
-5. SMALL_TALK（簡單寒暄）
+6. SMALL_TALK（簡單寒暄）
    簡單問候或感謝。
    - 範例：
      - "你好"
@@ -127,16 +177,16 @@ const SYSTEM_PROMPT = `
      - intent: "SMALL_TALK"
      - message: 一段簡短、溫暖的繁體中文回覆。
 
-6. HELP（說明功能）
+7. HELP（說明功能）
    使用者在問這個 bot 可以做什麼。
    - 範例：
      - "你可以幹嘛？"
      - "幫我介紹一下功能"
    - 輸出規則：
      - intent: "HELP"
-     - message: 用繁體中文簡要說明你會的事（設定提醒、列出提醒、取消提醒、聊天）。
+     - message: 用繁體中文簡要說明你會的事（設定提醒、查看提醒、修改提醒、取消提醒、聊天）。
 
-7. UNKNOWN（無法判斷）
+8. UNKNOWN（無法判斷）
    實在看不出使用者想幹嘛。
    - 輸出規則：
      - intent: "UNKNOWN"
@@ -144,11 +194,17 @@ const SYSTEM_PROMPT = `
 
 【輸出 JSON 結構（務必嚴格遵守）】
 {
-  "intent": "CREATE_REMINDER" | "LIST_REMINDERS" | "CANCEL_REMINDER" | "GENERAL_CHAT" | "SMALL_TALK" | "HELP" | "UNKNOWN",
+  "intent": "CREATE_REMINDER" | "LIST_REMINDERS" | "UPDATE_REMINDER" | "CANCEL_REMINDER" | "GENERAL_CHAT" | "SMALL_TALK" | "HELP" | "UNKNOWN",
   "reminder": {
     "datetime": "ISO-8601-UTC-string",
     "message": "要提醒的內容",
     "timezone": "Asia/Taipei"
+  },
+  "updateReminder": {
+    "datetime": "ISO-8601-UTC-string",
+    "messageKeyword": "用來對應要修改的提醒內容的關鍵字",
+    "newDatetime": "ISO-8601-UTC-string",
+    "newMessage": "新的提醒內容（選填）"
   },
   "cancelReminder": {
     "datetime": "ISO-8601-UTC-string",

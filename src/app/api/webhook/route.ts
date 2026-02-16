@@ -237,7 +237,175 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
 
       await client.replyMessage(replyToken, {
         type: 'text',
-        text: `這是你接下來的提醒：\n\n${lines.join('\n')}`,
+        text: `這是你接下來的提醒（共 ${reminders.length} 個）：\n\n${lines.join('\n')}\n\n💡 提示：你可以說「修改第一個提醒的時間為下午 3 點」或「取消開會那個提醒」來管理提醒。`,
+      });
+      return;
+    }
+
+    case 'UPDATE_REMINDER': {
+      if (!aiResult.updateReminder || !aiResult.updateReminder.newDatetime) {
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: '我沒有抓到新的時間，可以再說一次「把某個提醒改成幾點」嗎？',
+        });
+        return;
+      }
+
+      const newScheduled = new Date(aiResult.updateReminder.newDatetime);
+      if (isNaN(newScheduled.getTime())) {
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: '我解析新時間失敗了，可以換個說法再講一次時間嗎？',
+        });
+        return;
+      }
+
+      const now = new Date();
+      if (newScheduled.getTime() <= now.getTime()) {
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: '新的時間已經過去了，請給我一個未來的時間。',
+        });
+        return;
+      }
+
+      // 找出要修改的提醒
+      const pending = await Reminder.find({
+        userId,
+        status: 'pending',
+        scheduledAt: { $gte: now },
+      }).sort({ scheduledAt: 1 });
+
+      if (pending.length === 0) {
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: '你目前沒有可以修改的提醒。',
+        });
+        return;
+      }
+
+      let target: (typeof pending)[number] | null = null;
+
+      // 根據時間或關鍵字找到目標提醒
+      if (aiResult.updateReminder.datetime) {
+        const targetTime = new Date(aiResult.updateReminder.datetime);
+        if (!isNaN(targetTime.getTime())) {
+          let bestDiff = Number.POSITIVE_INFINITY;
+          for (const r of pending) {
+            const diff = Math.abs(r.scheduledAt.getTime() - targetTime.getTime());
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              target = r;
+            }
+          }
+        }
+      }
+
+      if (!target && aiResult.updateReminder.messageKeyword) {
+        const keyword = aiResult.updateReminder.messageKeyword;
+        target = pending.find((r) => r.message.includes(keyword)) ?? null;
+      }
+
+      // 如果使用者說「第一個」「第二個」等，根據列表順序選擇
+      if (!target) {
+        const userText = text.toLowerCase();
+        const firstMatch = userText.match(/(第)?[一二三四五六七八九十\d]+[個項]/);
+        if (firstMatch) {
+          const numStr = firstMatch[0].replace(/[第個項]/g, '');
+          let index = -1;
+          if (numStr.match(/^\d+$/)) {
+            index = parseInt(numStr, 10) - 1;
+          } else {
+            const numMap: { [key: string]: number } = {
+              一: 1, 二: 2, 三: 3, 四: 4, 五: 5,
+              六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+            };
+            index = (numMap[numStr] || 1) - 1;
+          }
+          if (index >= 0 && index < pending.length) {
+            target = pending[index];
+          }
+        }
+      }
+
+      if (!target) {
+        // 如果找不到，讓使用者選擇
+        const lines = pending.slice(0, 5).map((r, index) => {
+          const timeStr = formatDateTimeForUser(r.scheduledAt);
+          return `${index + 1}. ${timeStr} —— ${r.message}`;
+        });
+        await client.replyMessage(replyToken, {
+          type: 'text',
+          text: `我找不到你要修改的提醒。這是你目前的提醒：\n\n${lines.join('\n')}\n\n請告訴我要修改哪一個（例如：「修改第一個」或「修改開會那個」）。`,
+        });
+        return;
+      }
+
+      // 更新提醒
+      const oldTime = formatDateTimeForUser(target.scheduledAt);
+      target.scheduledAt = newScheduled;
+      if (aiResult.updateReminder.newMessage) {
+        target.message = aiResult.updateReminder.newMessage;
+      }
+      await target.save();
+
+      // 建立新的 QStash 排程（使用與 CREATE_REMINDER 相同的邏輯）
+      if (qstashClient) {
+        try {
+          const delayMs = Math.max(0, newScheduled.getTime() - now.getTime());
+          const delaySeconds = Math.floor(delayMs / 1000);
+
+          let baseUrl =
+            process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+            'http://localhost:3000';
+
+          if (baseUrl && !baseUrl.match(/^https?:\/\//i)) {
+            baseUrl = `https://${baseUrl}`;
+          }
+
+          const callbackUrl = `${baseUrl}/api/reminder/send`;
+
+          try {
+            new URL(callbackUrl);
+          } catch (urlError) {
+            console.error('[QStash] Invalid callback URL format:', {
+              callbackUrl,
+              baseUrl,
+              error: urlError instanceof Error ? urlError.message : String(urlError),
+            });
+            throw new Error(`Invalid callback URL format: ${callbackUrl}`);
+          }
+
+          await qstashClient.publishJSON({
+            url: callbackUrl,
+            body: {
+              reminderId: target._id.toString(),
+              userId,
+              message: target.message,
+            },
+            delay: delaySeconds,
+          });
+
+          console.log('[QStash] Updated reminder scheduled successfully:', {
+            reminderId: target._id.toString(),
+            oldTime: oldTime,
+            newTime: formatDateTimeForUser(newScheduled),
+          });
+        } catch (error) {
+          console.error('[QStash] Failed to reschedule updated reminder:', {
+            error: error instanceof Error ? error.message : String(error),
+            reminderId: target._id.toString(),
+          });
+          // 即使 QStash 失敗，提醒已經更新，通知用戶
+        }
+      }
+
+      const newTime = formatDateTimeForUser(target.scheduledAt);
+      await client.replyMessage(replyToken, {
+        type: 'text',
+        text: `已將提醒從 ${oldTime} 修改為 ${newTime}${aiResult.updateReminder.newMessage ? `，內容改為「${aiResult.updateReminder.newMessage}」` : ''}。`,
       });
       return;
     }
