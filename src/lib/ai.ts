@@ -1,10 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-if (!process.env.GOOGLE_API_KEY) {
-  throw new Error('Missing GOOGLE_API_KEY environment variable');
+function getGenAI() {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing GOOGLE_API_KEY environment variable');
+  }
+  return new GoogleGenerativeAI(apiKey);
 }
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 // 專注在「提醒 + 聊天」的意圖定義
 export type IntentType =
@@ -163,6 +165,7 @@ export async function parseMessage(text: string): Promise<AIParseResult> {
   const currentTime = new Date().toISOString();
   const promptWithTime = SYSTEM_PROMPT.replace('{{CURRENT_TIME}}', currentTime);
 
+  const genAI = getGenAI();
   const model = genAI.getGenerativeModel({
     // 使用 gemini-2.5-flash-lite 模型
     model: 'gemini-2.5-flash-lite',
