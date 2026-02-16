@@ -101,11 +101,13 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
       // 使用 QStash 預約未來的提醒發送
       if (qstashClient) {
         try {
-          // 取得回調 URL（優先使用 VERCEL_URL，否則使用 NEXT_PUBLIC_APP_URL 或建構）
+          // 取得回調 URL（優先使用生產環境 URL，避免使用需要認證的預覽部署 URL）
+          // VERCEL_PROJECT_PRODUCTION_URL 始終指向生產環境，即使是在預覽部署中
           const baseUrl =
-            process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}`
-              : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+            process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+            'http://localhost:3000';
           const callbackUrl = `${baseUrl}/api/reminder/send`;
 
           const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
