@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    'Please define the MONGODB_URI environment variable inside .env.local'
-  );
+function getMongoUri(): string {
+  const MONGODB_URI = process.env.MONGODB_URI;
+  if (!MONGODB_URI) {
+    throw new Error(
+      'Please define the MONGODB_URI environment variable inside .env.local'
+    );
+  }
+  return MONGODB_URI;
 }
 
 /**
@@ -38,7 +40,8 @@ async function dbConnect() {
       bufferCommands: false,
     };
 
-    cached!.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
+    const uri = getMongoUri();
+    cached!.promise = mongoose.connect(uri, opts).then((mongoose) => {
       return mongoose;
     });
   }
