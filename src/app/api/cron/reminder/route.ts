@@ -22,7 +22,7 @@ function formatDateTimeForUser(date: Date) {
   });
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     await dbConnect();
 
@@ -57,12 +57,13 @@ export async function GET(req: NextRequest) {
           await reminder.save();
 
           return { id: reminder._id.toString(), status: 'sent' };
-        } catch (error: any) {
-          console.error('Failed to send reminder', reminder._id, error?.originalError || error);
+        } catch (error) {
+          const err = error as { originalError?: unknown; message?: string };
+          console.error('Failed to send reminder', reminder._id, err.originalError || err);
           return {
             id: reminder._id.toString(),
             status: 'failed',
-            error: error?.message ?? 'Unknown error',
+            error: err.message ?? 'Unknown error',
           };
         }
       })

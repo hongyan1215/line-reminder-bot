@@ -1,6 +1,4 @@
 import { Client, RichMenu } from '@line/bot-sdk';
-import fs from 'fs';
-import path from 'path';
 
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN!;
 const channelSecret = process.env.LINE_CHANNEL_SECRET!;
@@ -78,9 +76,10 @@ export async function setupRichMenu(appUrl: string) {
   let richMenuId: string;
   try {
     richMenuId = await client.createRichMenu(richMenu);
-  } catch (error: any) {
-    console.error('Failed to create rich menu:', error.response?.data || error.message);
-    throw new Error(`Create Rich Menu Failed: ${JSON.stringify(error.response?.data || error.message)}`);
+  } catch (error) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Failed to create rich menu:', err.response?.data || err.message || err);
+    throw new Error(`Create Rich Menu Failed: ${JSON.stringify(err.response?.data || err.message || err)}`);
   }
   console.log('Rich Menu created:', richMenuId);
 
@@ -105,11 +104,12 @@ export async function setupRichMenu(appUrl: string) {
   console.log('Uploading image...');
   try {
     await client.setRichMenuImage(richMenuId, imageBuffer, 'image/jpeg');
-  } catch (error: any) {
-    console.error('Failed to upload rich menu image:', error.response?.data || error.message);
+  } catch (error) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Failed to upload rich menu image:', err.response?.data || err.message || err);
     // Try to clean up the created menu if image upload fails
     await client.deleteRichMenu(richMenuId);
-    throw new Error(`Rich Menu Image Upload Failed: ${JSON.stringify(error.response?.data || error.message)}`);
+    throw new Error(`Rich Menu Image Upload Failed: ${JSON.stringify(err.response?.data || err.message || err)}`);
   }
 
   // 3. Set as Default
