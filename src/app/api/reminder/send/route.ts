@@ -73,8 +73,8 @@ async function handleReminderSend(req: NextRequest) {
 }
 
 // 如果設定了 QSTASH_CURRENT_SIGNING_KEY，使用 verifySignatureAppRouter 包裝
+// verifySignatureAppRouter 會自動從環境變數讀取 QSTASH_CURRENT_SIGNING_KEY
 // 否則直接使用原始 handler
-export const POST =
-  process.env.QSTASH_CURRENT_SIGNING_KEY
-    ? verifySignatureAppRouter(handleReminderSend, process.env.QSTASH_CURRENT_SIGNING_KEY)
-    : handleReminderSend;
+export const POST = process.env.QSTASH_CURRENT_SIGNING_KEY
+  ? verifySignatureAppRouter(handleReminderSend)
+  : handleReminderSend;
