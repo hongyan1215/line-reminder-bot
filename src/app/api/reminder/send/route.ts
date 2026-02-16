@@ -23,18 +23,8 @@ function formatDateTimeForUser(date: Date) {
   });
 }
 
-export async function POST(req: NextRequest) {
+async function handleReminderSend(req: NextRequest) {
   try {
-    // 驗證 QStash 簽名（如果設定了 QSTASH_CURRENT_SIGNING_KEY）
-    if (process.env.QSTASH_CURRENT_SIGNING_KEY) {
-      try {
-        await verifySignatureAppRouter(req, process.env.QSTASH_CURRENT_SIGNING_KEY);
-      } catch (sigError) {
-        console.error('QStash signature verification failed:', sigError);
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-      }
-    }
-
     const body = await req.json();
     const { reminderId, userId, message } = body;
 
@@ -81,3 +71,10 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// 如果設定了 QSTASH_CURRENT_SIGNING_KEY，使用 verifySignatureAppRouter 包裝
+// 否則直接使用原始 handler
+export const POST =
+  process.env.QSTASH_CURRENT_SIGNING_KEY
+    ? verifySignatureAppRouter(handleReminderSend, process.env.QSTASH_CURRENT_SIGNING_KEY)
+    : handleReminderSend;
