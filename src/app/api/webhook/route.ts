@@ -103,12 +103,31 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
         try {
           // 取得回調 URL（優先使用生產環境 URL，避免使用需要認證的預覽部署 URL）
           // VERCEL_PROJECT_PRODUCTION_URL 始終指向生產環境，即使是在預覽部署中
-          const baseUrl =
+          // 確保 URL 包含協議前綴（http:// 或 https://）
+          let baseUrl =
             process.env.VERCEL_PROJECT_PRODUCTION_URL ||
             process.env.NEXT_PUBLIC_APP_URL ||
             (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
             'http://localhost:3000';
+          
+          // 確保 baseUrl 包含協議前綴（移除可能的重複前綴）
+          if (baseUrl && !baseUrl.match(/^https?:\/\//i)) {
+            baseUrl = `https://${baseUrl}`;
+          }
+          
           const callbackUrl = `${baseUrl}/api/reminder/send`;
+          
+          // 驗證 URL 格式
+          try {
+            new URL(callbackUrl);
+          } catch (urlError) {
+            console.error('[QStash] Invalid callback URL format:', {
+              callbackUrl,
+              baseUrl,
+              error: urlError instanceof Error ? urlError.message : String(urlError),
+            });
+            throw new Error(`Invalid callback URL format: ${callbackUrl}`);
+          }
 
           const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
           const delaySeconds = Math.floor(delayMs / 1000); // QStash delay 使用秒數
@@ -119,6 +138,13 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
             scheduledAt: scheduled.toISOString(),
             delaySeconds,
             callbackUrl,
+            baseUrl,
+            callbackUrlLength: callbackUrl.length,
+            envVars: {
+              VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL || 'not set',
+              NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'not set',
+              VERCEL_URL: process.env.VERCEL_URL || 'not set',
+            },
           });
 
           const result = await qstashClient.publishJSON({
@@ -142,16 +168,31 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
           });
           return;
         } catch (error) {
+          // 重新建構 callbackUrl 用於錯誤日誌（與上面使用相同的邏輯）
+          const errorCallbackUrl =
+            process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+            'http://localhost:3000';
+          
           console.error('[QStash] Failed to schedule reminder:', {
             error: error instanceof Error ? error.message : String(error),
+            errorName: error instanceof Error ? error.name : undefined,
             stack: error instanceof Error ? error.stack : undefined,
             reminderId: reminder._id.toString(),
-            callbackUrl: process.env.VERCEL_URL
-              ? `https://${process.env.VERCEL_URL}/api/reminder/send`
-              : process.env.NEXT_PUBLIC_APP_URL
-                ? `${process.env.NEXT_PUBLIC_APP_URL}/api/reminder/send`
-                : 'http://localhost:3000/api/reminder/send',
+            callbackUrl: `${errorCallbackUrl}/api/reminder/send`,
+            delaySeconds,
+            hasQStashToken: !!process.env.QSTASH_TOKEN,
+            hasQStashUrl: !!process.env.QSTASH_URL,
+            qstashBaseUrl: process.env.QSTASH_URL || 'default',
+            // 記錄完整的錯誤物件（如果有的話）
+            errorDetails: error instanceof Error ? {
+              name: error.name,
+              message: error.message,
+              cause: error.cause,
+            } : String(error),
           });
+          
           // 通知用戶排程可能失敗
           await client.replyMessage(replyToken, {
             type: 'text',
