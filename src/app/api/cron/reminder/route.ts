@@ -53,7 +53,6 @@ export async function GET(req: NextRequest) {
           });
 
           reminder.status = 'sent';
-          // @ts-expect-error: sentAt is defined in schema but not in interface used by mongoose typing
           reminder.sentAt = new Date();
           await reminder.save();
 
