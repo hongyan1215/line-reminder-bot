@@ -120,6 +120,46 @@
 
 ---
 
+## 四點五、設定 MongoDB Atlas IP Whitelist（重要！避免連線失敗）
+
+**如果你使用 MongoDB Atlas**，部署到 Vercel 後可能會遇到這個錯誤：
+
+```
+MongooseServerSelectionError: Could not connect to any servers in your MongoDB Atlas cluster. 
+One common reason is that you're trying to access the database from an IP that isn't whitelisted.
+```
+
+這是因為 **MongoDB Atlas 預設只允許特定 IP 連線**，而 Vercel 的伺服器 IP 不在你的白名單中。
+
+### 解決方法（在 MongoDB Atlas 網頁上操作）
+
+1. 登入 `https://cloud.mongodb.com/`，選擇你的 Cluster。
+
+2. 點左側選單的 **Network Access**（或「Security」→「Network Access」）。
+
+3. 點 **Add IP Address** 按鈕。
+
+4. 有兩種選擇：
+
+   - **選項 A：允許所有 IP（最簡單，適合開發/測試）**
+     - 在輸入框填入：`0.0.0.0/0`
+     - 點 **Confirm**。
+     - ⚠️ 注意：這會允許任何 IP 連線，安全性較低，但方便測試。正式環境建議用選項 B。
+
+   - **選項 B：只允許 Vercel IP（較安全，但需要定期更新）**
+     - Vercel 的 IP 範圍會變動，你可以：
+       - 先暫時用 `0.0.0.0/0` 測試，確認功能正常。
+       - 之後查詢 Vercel 官方文件或聯絡支援，取得最新的 IP 範圍。
+       - 再把白名單改成只允許那些 IP。
+
+5. 設定完成後，等待約 1-2 分鐘讓設定生效。
+
+6. 回到 Vercel，重新觸發一次部署（或等 Vercel 自動重新部署），再測試 LINE Bot 是否能正常回覆。
+
+> **重要**：如果你已經在 Vercel 設好 `MONGODB_URI` 環境變數，但還是出現連線錯誤，99% 是 IP whitelist 的問題。請務必完成這個步驟。
+
+---
+
 ## 五、設定 LINE Bot Webhook 連到 Vercel
 
 1. 到 `https://developers.line.biz/`，登入後：
