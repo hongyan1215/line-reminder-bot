@@ -164,8 +164,8 @@ export async function parseMessage(text: string): Promise<AIParseResult> {
   const promptWithTime = SYSTEM_PROMPT.replace('{{CURRENT_TIME}}', currentTime);
 
   const model = genAI.getGenerativeModel({
-    // 使用 gemini-3-flash-preview 模型
-    model: 'gemini-3-flash-preview',
+    // 使用 gemini-2.5-flash-lite 模型
+    model: 'gemini-2.5-flash-lite',
     systemInstruction: promptWithTime,
     generationConfig: {
       responseMimeType: 'application/json',
