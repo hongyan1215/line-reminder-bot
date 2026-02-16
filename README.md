@@ -240,32 +240,69 @@ One common reason is that you're trying to access the database from an IP that i
 2. 使用 `LINE_CHANNEL_ACCESS_TOKEN` 透過 `pushMessage` 對對應 `userId` 發出訊息。
 3. 把這些提醒的 `status` 設為 `sent`，儲存 `sentAt`。
 
-### 設定方式（選擇其中一種）
+### ⚠️ Vercel 免費版限制
 
-#### 方式 A：使用 Vercel Cron（推薦，最簡單）
+**Vercel 免費版（Hobby）的 Cron Jobs 只能每天執行一次**，無法滿足每分鐘檢查提醒的需求。
 
-1. 登入 Vercel，進入你的專案頁面。
-2. 點上方選單的 **Settings**。
-3. 左側選單點 **Cron Jobs**。
-4. 點 **Create Cron Job**。
-5. 填寫：
-   - **Path**: `/api/cron/reminder`
-   - **Schedule**: `*/1 * * * *`（每分鐘執行一次）
-     - 如果你想要更精確，可以改成 `*/5 * * * *`（每 5 分鐘）或 `0 * * * *`（每小時整點）
-   - **Timezone**: `Asia/Taipei`（可選，但建議設定）
-6. 點 **Create**。
+**解決方案：使用外部免費 Cron 服務**（推薦）
 
-完成後，Vercel 會每分鐘自動呼叫這個 API，檢查是否有到期的提醒並發送。
+### 推薦方案：使用 cron-job.org（免費，支援每分鐘執行）
 
-#### 方式 B：使用外部 Cron 服務（例如 cron-job.org）
+1. **註冊帳號**：
+   - 前往 `https://cron-job.org/`
+   - 點右上角 **Sign up** 註冊（免費）
 
-1. 註冊 `https://cron-job.org/`（或其他免費 cron 服務）。
+2. **建立新的 Cron Job**：
+   - 登入後，點 **Create cronjob**
+   - 填寫以下資訊：
+     - **Title**: `LINE Reminder Bot`（任意名稱）
+     - **Address (URL)**: `https://你的-vercel-domain/api/cron/reminder`
+       - 例如：`https://line-reminder-bot.vercel.app/api/cron/reminder`
+     - **Schedule**: 選擇 **Every minute**（每分鐘）
+       - 或手動輸入 Cron 表達式：`*/1 * * * *`
+     - **Request method**: `GET`
+     - **Request timeout**: `30` 秒
+   - 點 **Create cronjob**
+
+3. **啟用 Cron Job**：
+   - 建立後，確認狀態是 **Enabled**（綠色開關）
+   - 可以點 **Run now** 手動測試一次
+
+4. **完成**：
+   - cron-job.org 會每分鐘自動呼叫你的 API
+   - 檢查是否有到期的提醒並發送
+
+### 其他替代方案
+
+#### 方式 B：使用 EasyCron（免費方案）
+
+1. 註冊 `https://www.easycron.com/`（免費方案支援每分鐘執行）
 2. 建立新的 Cron Job：
    - **URL**: `https://你的-vercel-domain/api/cron/reminder`
-   - **Schedule**: 每分鐘（`*/1 * * * *`）
-3. 儲存設定。
+   - **Schedule**: `*/1 * * * *`（每分鐘）
+3. 儲存並啟用
 
-#### 方式 C：自己伺服器 / 電腦上的 cron（需要機器一直開著）
+#### 方式 C：使用 GitHub Actions Scheduled Workflow（免費，但有限制）
+
+1. 在專案中建立 `.github/workflows/cron-reminder.yml`：
+
+   ```yaml
+   name: Reminder Cron
+   on:
+     schedule:
+       - cron: '*/1 * * * *'  # 每分鐘
+   jobs:
+     trigger:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Call Reminder API
+           run: |
+             curl -s https://你的-vercel-domain/api/cron/reminder
+   ```
+
+2. ⚠️ **注意**：GitHub Actions 免費方案有執行時間限制，且可能不會精確每分鐘執行。
+
+#### 方式 D：自己伺服器 / 電腦上的 cron（需要機器一直開著）
 
 1. 在自己的機器上設定 cron，每分鐘 curl 一次：
 
@@ -279,11 +316,19 @@ One common reason is that you're trying to access the database from an IP that i
 
 設定完成後，你可以：
 
-1. 先用 LINE Bot 設定一個「幾分鐘後」的提醒（例如：「幫我 5 分鐘後提醒測試」）。
-2. 等待 5 分鐘，看 Bot 是否自動發送提醒訊息。
-3. 如果沒收到，檢查：
-   - Vercel 的 **Functions** → **Logs**，看 `/api/cron/reminder` 是否有被呼叫。
-   - 是否有錯誤訊息（例如 MongoDB 連線失敗、LINE token 錯誤等）。
+1. **先用 LINE Bot 設定一個「幾分鐘後」的提醒**：
+   - 例如：「幫我 3 分鐘後提醒測試」
+
+2. **等待時間到**，看 Bot 是否自動發送提醒訊息。
+
+3. **如果沒收到，檢查**：
+   - 外部 cron 服務的執行記錄（cron-job.org 會顯示每次執行的狀態）
+   - Vercel 的 **Functions** → **Logs**，看 `/api/cron/reminder` 是否有被呼叫
+   - 是否有錯誤訊息（例如 MongoDB 連線失敗、LINE token 錯誤等）
+
+4. **手動測試 API**：
+   - 在瀏覽器訪問：`https://你的-vercel-domain/api/cron/reminder`
+   - 應該會看到 JSON 回應，例如：`{"message":"No due reminders","count":0}` 或 `{"message":"Processed reminders","count":1}`
 
 > **重要**：如果沒有設定 Cron，提醒功能雖然已經寫好了，但不會自動執行。使用者設定的提醒會一直存在資料庫中，但不會在時間到時自動發送。
 
