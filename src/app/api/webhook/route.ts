@@ -100,6 +100,10 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
 
       // 使用 QStash 預約未來的提醒發送
       if (qstashClient) {
+        // 計算延遲時間（在 try 區塊外，以便在 catch 中使用）
+        const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
+        const delaySeconds = Math.floor(delayMs / 1000); // QStash delay 使用秒數
+        
         try {
           // 取得回調 URL（優先使用生產環境 URL，避免使用需要認證的預覽部署 URL）
           // VERCEL_PROJECT_PRODUCTION_URL 始終指向生產環境，即使是在預覽部署中
@@ -128,9 +132,6 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
             });
             throw new Error(`Invalid callback URL format: ${callbackUrl}`);
           }
-
-          const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
-          const delaySeconds = Math.floor(delayMs / 1000); // QStash delay 使用秒數
 
           console.log('[QStash] Scheduling reminder:', {
             reminderId: reminder._id.toString(),
