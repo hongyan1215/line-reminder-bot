@@ -2,6 +2,8 @@
 
 這是一個使用 **Next.js App Router** + **TypeScript** 實作的 **LineBot 提醒 + 聊天系統**，功能包含：
 
+> 最後更新：2026-02-17 - 已設定 Vercel Cron Job 自動執行提醒功能
+
 - 使用 Gemini 解析使用者中文訊息（設定提醒 / 查詢提醒 / 取消提醒 / 聊天）。
 - 將提醒資料存到 MongoDB。
 - 經由 LINE Messaging API Webhook 互動。
