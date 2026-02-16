@@ -21,6 +21,13 @@ const qstashClient = process.env.QSTASH_TOKEN
     })
   : null;
 
+// Log QStash client initialization status
+if (qstashClient) {
+  console.log('[QStash] Client initialized successfully');
+} else {
+  console.warn('[QStash] QStash client not initialized. QSTASH_TOKEN may be missing.');
+}
+
 function formatDateTimeForUser(date: Date) {
   return date.toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',
@@ -104,7 +111,15 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
           const delayMs = Math.max(0, scheduled.getTime() - now.getTime());
           const delaySeconds = Math.floor(delayMs / 1000); // QStash delay 使用秒數
 
-          await qstashClient.publishJSON({
+          console.log('[QStash] Scheduling reminder:', {
+            reminderId: reminder._id.toString(),
+            userId,
+            scheduledAt: scheduled.toISOString(),
+            delaySeconds,
+            callbackUrl,
+          });
+
+          const result = await qstashClient.publishJSON({
             url: callbackUrl,
             body: {
               reminderId: reminder._id.toString(),
@@ -113,10 +128,37 @@ async function handleTextMessage(userId: string, replyToken: string, text: strin
             },
             delay: delaySeconds, // 延遲時間（秒）
           });
+
+          console.log('[QStash] Scheduled successfully:', {
+            messageId: result.messageId,
+            reminderId: reminder._id.toString(),
+          });
+
+          await client.replyMessage(replyToken, {
+            type: 'text',
+            text: `好的！我會在 ${formatDateTimeForUser(reminder.scheduledAt)} 提醒你：「${reminder.message}」。`,
+          });
+          return;
         } catch (error) {
-          console.error('Failed to schedule QStash reminder:', error);
-          // 如果 QStash 失敗，仍然回覆使用者，但提醒可能不會準時發送
+          console.error('[QStash] Failed to schedule reminder:', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            reminderId: reminder._id.toString(),
+            callbackUrl: process.env.VERCEL_URL
+              ? `https://${process.env.VERCEL_URL}/api/reminder/send`
+              : process.env.NEXT_PUBLIC_APP_URL
+                ? `${process.env.NEXT_PUBLIC_APP_URL}/api/reminder/send`
+                : 'http://localhost:3000/api/reminder/send',
+          });
+          // 通知用戶排程可能失敗
+          await client.replyMessage(replyToken, {
+            type: 'text',
+            text: `⚠️ 提醒已記錄，但排程時發生錯誤。請稍後再試或聯絡管理員。\n\n提醒內容：${aiResult.reminder.message}\n預定時間：${formatDateTimeForUser(scheduled)}`,
+          });
+          return;
         }
+      } else {
+        console.warn('[QStash] QStash client not initialized. QSTASH_TOKEN may be missing.');
       }
 
       await client.replyMessage(replyToken, {

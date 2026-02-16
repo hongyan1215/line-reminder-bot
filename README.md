@@ -264,8 +264,43 @@ One common reason is that you're trying to access the database from an IP that i
 
 > **注意**：
 > - 如果沒有設定 `QSTASH_TOKEN`，系統會回退到傳統的資料庫儲存方式，但提醒不會自動發送（需要外部 cron 服務）。
-> - `QSTASH_CURRENT_SIGNING_KEY` 用於驗證 QStash 回調請求的簽名，建議在生產環境一定要設定。
+> - `QSTASH_CURRENT_SIGNING_KEY` 用於驗證 QStash 回調請求的簽名，**必須設定**，否則會收到 HTTP 401 錯誤。
 > - `QSTASH_NEXT_SIGNING_KEY` 是選填的，用於簽名 key 輪換時使用。
+
+### ⚠️ 疑難排解：QStash 回調收到 HTTP 401 錯誤
+
+如果 QStash 日誌顯示 `HTTP status 401`，表示簽名驗證失敗。請檢查以下項目：
+
+1. **確認環境變數已正確設定**：
+   - 登入 Vercel Dashboard → 你的專案 → Settings → Environment Variables
+   - 確認以下變數都已設定：
+     - `QSTASH_TOKEN`
+     - `QSTASH_CURRENT_SIGNING_KEY`（**必須設定**）
+     - `QSTASH_NEXT_SIGNING_KEY`（選填，但建議設定）
+     - `QSTASH_URL`（選填）
+
+2. **確認簽名 Key 值正確**：
+   - 前往 [Upstash Console](https://console.upstash.com/qstash)
+   - 點選你的 QStash 專案
+   - 在 **Signing Keys** 區塊複製 **Current Signing Key**
+   - 確認 Vercel 中的 `QSTASH_CURRENT_SIGNING_KEY` 值與 Upstash Console 中的值完全一致（包括前綴 `sig_`）
+
+3. **檢查 Vercel 日誌**：
+   - 前往 Vercel Dashboard → 你的專案 → Logs
+   - 搜尋 `[Reminder Send] Environment check`
+   - 確認 `hasQStashCurrentSigningKey: true`
+   - 如果顯示 `false`，表示環境變數未正確載入，需要重新部署
+
+4. **重新部署**：
+   - 修改環境變數後，**必須重新部署** Vercel 專案才會生效
+   - 可以透過 Vercel Dashboard → Deployments → 點選最新部署 → Redeploy
+
+5. **檢查 URL 是否匹配**：
+   - QStash 發送的 URL 必須與你的 Vercel 部署 URL 完全一致
+   - 確認 `QSTASH_URL` 設定正確（如果使用預設值可以省略）
+   - 確認 Vercel 的 `VERCEL_URL` 環境變數正確（Vercel 會自動設定）
+
+如果以上都確認無誤，請檢查 Vercel Logs 中的詳細錯誤訊息，或查看 Upstash Console 的 QStash Logs 以獲取更多診斷資訊。
 
 ---
 
