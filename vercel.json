@@ -1,5 +1,10 @@
 {
-  "crons": [],
+  "crons": [
+    {
+      "path": "/api/cron/reminder",
+      "schedule": "*/1 * * * *"
+    }
+  ],
   "functions": {
     "src/app/api/webhook/route.ts": {
       "maxDuration": 30
