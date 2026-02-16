@@ -222,36 +222,68 @@ One common reason is that you're trying to access the database from an IP that i
 
 ---
 
-## 七、設定提醒 Cron（讓提醒在正確時間推播）
+## 七、設定提醒 Cron（讓提醒在正確時間推播）⚠️ 重要！
 
-提醒真正「推送給使用者」是由這個 API 來做：
+**提醒功能已經實作好了**（`src/app/api/cron/reminder/route.ts`），但需要你設定 **Cron Job** 來定期觸發，提醒才會在指定時間自動發送給使用者。
+
+### 功能說明
+
+當你呼叫這個 API 時：
 
 - `GET https://你的-vercel-domain/api/cron/reminder`
 
-當你呼叫這個網址時，程式會：
+程式會：
 
 1. 從 MongoDB 找出 `scheduledAt <= 現在` 以及 `status = 'pending'` 的提醒。
 2. 使用 `LINE_CHANNEL_ACCESS_TOKEN` 透過 `pushMessage` 對對應 `userId` 發出訊息。
 3. 把這些提醒的 `status` 設為 `sent`，儲存 `sentAt`。
 
-### 你可以用的兩種方式
+### 設定方式（選擇其中一種）
 
-- **方式 A：Vercel Cron（建議未來使用）**
-  1. 在 Vercel 專案頁面 → Settings → Cron Jobs。
-  2. 新增一個 Cron Job：
-     - Path: `/api/cron/reminder`
-     - Schedule: `*/1 * * * *`（每分鐘執行一次）或你想要的頻率。
+#### 方式 A：使用 Vercel Cron（推薦，最簡單）
 
-- **方式 B：自己伺服器 / 電腦上的 cron**
-  1. 在自己的機器上設定 cron，每分鐘或每 5 分鐘 curl 一次：
+1. 登入 Vercel，進入你的專案頁面。
+2. 點上方選單的 **Settings**。
+3. 左側選單點 **Cron Jobs**。
+4. 點 **Create Cron Job**。
+5. 填寫：
+   - **Path**: `/api/cron/reminder`
+   - **Schedule**: `*/1 * * * *`（每分鐘執行一次）
+     - 如果你想要更精確，可以改成 `*/5 * * * *`（每 5 分鐘）或 `0 * * * *`（每小時整點）
+   - **Timezone**: `Asia/Taipei`（可選，但建議設定）
+6. 點 **Create**。
 
-     ```bash
-     */1 * * * * curl -s https://line-reminder-bot.vercel.app/api/cron/reminder > /dev/null 2>&1
-     ```
+完成後，Vercel 會每分鐘自動呼叫這個 API，檢查是否有到期的提醒並發送。
 
-  2. 確保這台機器一直在線上。
+#### 方式 B：使用外部 Cron 服務（例如 cron-job.org）
 
-> 這一步我無法代你操作，必須在 Vercel 或你自己的伺服器上手動設定，但 API 已經實作好了，只要能定期打這個 URL 就可以。
+1. 註冊 `https://cron-job.org/`（或其他免費 cron 服務）。
+2. 建立新的 Cron Job：
+   - **URL**: `https://你的-vercel-domain/api/cron/reminder`
+   - **Schedule**: 每分鐘（`*/1 * * * *`）
+3. 儲存設定。
+
+#### 方式 C：自己伺服器 / 電腦上的 cron（需要機器一直開著）
+
+1. 在自己的機器上設定 cron，每分鐘 curl 一次：
+
+   ```bash
+   */1 * * * * curl -s https://line-reminder-bot.vercel.app/api/cron/reminder > /dev/null 2>&1
+   ```
+
+2. 確保這台機器一直在線上。
+
+### 測試 Cron 是否正常運作
+
+設定完成後，你可以：
+
+1. 先用 LINE Bot 設定一個「幾分鐘後」的提醒（例如：「幫我 5 分鐘後提醒測試」）。
+2. 等待 5 分鐘，看 Bot 是否自動發送提醒訊息。
+3. 如果沒收到，檢查：
+   - Vercel 的 **Functions** → **Logs**，看 `/api/cron/reminder` 是否有被呼叫。
+   - 是否有錯誤訊息（例如 MongoDB 連線失敗、LINE token 錯誤等）。
+
+> **重要**：如果沒有設定 Cron，提醒功能雖然已經寫好了，但不會自動執行。使用者設定的提醒會一直存在資料庫中，但不會在時間到時自動發送。
 
 ---
 
